@@ -252,6 +252,24 @@ function App(options) {
           icon: 'icon-distribute-vertically-tool',
           label: 'Distribute Elements Vertically',
           action: this.compose('triggerAction', 'distributeVertically')
+        }),
+        Separator(),
+        MultiButton({
+          id: 'deploy',
+          choices: [
+            {
+              id: 'deploy-bpmn',
+              icon: 'icon-deploy',
+              label: 'Deploy Current Process',
+              action: this.compose('triggerAction', 'deploy-bpmn'),
+              primary: true
+            },
+            {
+              id: 'deploy-endpoint-config',
+              label: 'Configure BPMN Deployment',
+              action: this.compose('triggerAction', 'show-engine-config')
+            }
+          ]
         })
       ]
     }
@@ -274,6 +292,10 @@ function App(options) {
   this.fileHistory = [];
 
 
+  this.events.on('deploy:endpoint:update', endpoints => {
+    this.persistEndpoints(endpoints);
+  });
+
   this.events.on('workspace:changed', debounce((done) => {
     this.persistWorkspace((err) => {
       debug('workspace persisted?', err);
@@ -287,7 +309,6 @@ function App(options) {
 
 
   this.events.on('tools:state-changed', (tab, newState) => {
-
     var button;
 
     if (this.activeTab !== tab) {
@@ -339,6 +360,13 @@ function App(options) {
     button = find(this.menuEntries.bpmn.buttons, { id: 'set-color' });
     button.disabled = !newState.elementsSelected;
 
+    // update deploy status
+    if (typeof newState.deployDisabled !== 'undefined') {
+      button = find(this.menuEntries.bpmn.buttons, { id: 'deploy-bpmn' });
+      button.disabled = newState.deployDisabled;
+    }
+
+
     this.events.emit('changed');
   });
 
@@ -361,6 +389,7 @@ function App(options) {
 
   this.events.on('layout:update', newLayout => {
     this.layout = merge(this.layout, newLayout);
+
 
     this.events.emit('changed');
   });
@@ -411,7 +440,8 @@ App.prototype.render = function() {
       <ModalOverlay
         isActive={ this._activeOverlay }
         content={ this._overlayContent }
-        events={ this.events } />
+        events={ this.events }
+        endpoints={ this.endpoints }/>
       <MenuBar entries={ this.menuEntries } />
       <Tabbed
         className="main"
@@ -652,6 +682,19 @@ App.prototype.triggerAction = function(action, options) {
     return this.exportTab(activeTab, options.type);
   }
 
+  if (action === 'show-engine-config') {
+    return this.toggleOverlay('endpointConfig');
+  }
+
+  if (action === 'deploy-bpmn') {
+    var file = activeTab.file;
+    return this.browser.send('deploy:bpmn', { file: file }, function(err, response) {
+      if (err) {
+        return console.error('| deploy:bpmn |' + JSON.stringify(err));
+      }
+      return debug('deploy:bpmn | response');
+    });
+  }
   // forward other actions to active tab
   activeTab.triggerAction(action, options);
 };
@@ -694,7 +737,6 @@ App.prototype.openTabs = function(files) {
   }
 
   var openedTabs = files.map((file) => {
-
     // make sure we do not double open tabs
     // for the same file
     return this.findTab(file) || this._createTab(file);
@@ -726,7 +768,6 @@ App.prototype.openTab = function(file) {
  */
 App.prototype._createTab = function(file) {
   var tabProvider = this._findTabProvider(file.fileType);
-
   return this._addTab(tabProvider.createTab(file));
 };
 
@@ -1212,7 +1253,6 @@ App.prototype._addTab = function(tab) {
  * @param {Function} done
  */
 App.prototype.persistWorkspace = function(done) {
-
   var config = {
     tabs: [],
     activeTab: -1
@@ -1242,6 +1282,10 @@ App.prototype.persistWorkspace = function(done) {
   // let others store stuff, too
   this.events.emit('workspace:persist', config);
 
+  //store bpmn deploy url
+  console.log('new endpoint: ', this.endpoints);
+  config.endpoints = this.endpoints;
+
   // actually save
   this.workspace.save(config, (err, config) => {
     this.events.emit('workspace:persisted', err, config);
@@ -1269,7 +1313,10 @@ App.prototype.restoreWorkspace = function(done) {
         open: false,
         height: 150
       }
-    }
+    },
+    endpoints: [
+      'http://localhost:8080/engine-rest/deployment/create'
+    ]
   };
 
 
@@ -1290,7 +1337,10 @@ App.prototype.restoreWorkspace = function(done) {
       this.activeTab = this.tabs[workspaceConfig.activeTab];
     }
 
+    this.endpoints = workspaceConfig.endpoints || defaultWorkspace.endpoints;
+
     this.events.emit('layout:update', workspaceConfig.layout);
+
 
     this.events.emit('changed');
 
@@ -1309,6 +1359,7 @@ App.prototype.restoreWorkspace = function(done) {
  * @param  {Boolean} isDisabled
  */
 App.prototype.updateMenuEntry = function(group, id, isDisabled) {
+
   var button = find(this.menuEntries[group].buttons, { id: id });
 
   button.disabled = isDisabled;
@@ -1476,6 +1527,17 @@ App.prototype.quit = function() {
   }, {
     skipIfDiscardChanges: true
   });
+};
+
+
+/**
+ * Changes and persist bpmn deployment url
+ * @param url
+ */
+App.prototype.persistEndpoints = function(_endpoints) {
+  this.endpoints = _endpoints;
+  console.log('persist endpoints: ', this.endpoints);
+  this.events.emit('workspace:changed');
 };
 
 var rdebug = require('debug')('app - external change');

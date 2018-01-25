@@ -258,9 +258,11 @@ describe('BpmnEditor', function() {
   it('should call state if input is active', function() {
     // given
     var stateSpy = spy(editor, 'updateState');
-
+    var closestMock = function() {
+      return true;
+    };
     // when
-    editor.emit('input:focused', { target: { tagName: 'TEXTAREA' } });
+    editor.emit('input:focused', { target: { tagName: 'TEXTAREA', closest: closestMock } });
 
     // then
     expect(stateSpy).to.have.been.called;

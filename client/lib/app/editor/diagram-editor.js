@@ -12,7 +12,6 @@ var needsOverride = require('util/needs-override');
 
 var getWarnings = require('app/util/get-warnings');
 
-
 /**
  * Base diagram editor.
  *

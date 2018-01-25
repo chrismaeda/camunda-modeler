@@ -72,7 +72,7 @@ function BpmnEditor(options) {
 
   // update state so that it reflects that an 'input' is active
   this.on('input:focused', (event) => {
-    if (isInput.isInput(event.target)) {
+    if (isInput.isInput(event.target) && event.target.closest('.bpmn-editor')) {
       this.updateState();
     }
   });
